@@ -54,7 +54,7 @@ If you close this tutorial window by mistake, you can always run the following c
 2. Customize `terraform.tfvars` based on `terraform.tfvars.template`.
 3. Run: `terraform init`, `terraform plan`, `terraform apply`
 4. In the root project folder, execute Cloud Build: `gcloud builds submit --config cloudbuild.yaml --substitutions _SERVICE_NAME=your-service-name,_REGION=your-gcp-region`
-5. Get the URL where the demo was deployed: `gcloud run services list | grep -i ai-agent`
+5. Get the URL where the demo was deployed: `gcloud run services list | grep -i build-your-ai-agent`
 
 ## Usage
 

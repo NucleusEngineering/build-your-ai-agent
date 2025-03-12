@@ -177,6 +177,11 @@ terraform plan
 terraform apply
 ```
 
+And return to our main folder
+```bash
+cd ..
+```
+
 Now with that out of the way, we need to focus on our code that is not yet built 
 nor containerized, but Cloud Run requires that. The `gcloud` CLI has a convenient 
 shortcut for deploying Cloud Run which quickly allows us to do so.
@@ -191,7 +196,6 @@ We can use a single command to easily:
 - route traffic to the new endpoint
 
 ```bash
-cd ..
 gcloud run deploy build-your-ai-agent --source .
 ```
 
@@ -336,7 +340,7 @@ First we need to let our Gemini model know about this method. Open the <walkthro
 to to `get_function_declarations` method. Something like
 
 ```python
-fc_generate_avatar = FunctionDeclaration(
+fc_generate_avatar = types.FunctionDeclaration(
     name="fc_generate_avatar",
     description='''Create new avatar or avatar.  
         Inject the description into the function that is being called.''',
@@ -355,11 +359,11 @@ fc_generate_avatar = FunctionDeclaration(
 Also add this variable to the return statement:
 
 ```python
-return [
+return types.Tool(function_declarations=[
     fc_generate_avatar, # this is the new entry
     fc_show_my_model,
     fc_show_my_avatar
-]
+])
 ```
 
 With that out of the way, we need to implement the method now. You can use
@@ -421,7 +425,7 @@ called and instructed with which color to work. For that we need to create yet a
 instruct Gemini to call it. Same as previously, we add the reference:
 
 ```python
-fc_save_model_color = FunctionDeclaration(
+fc_save_model_color = types.FunctionDeclaration(
     name="fc_save_model_color",
     description="Save new color when user requests to update his game model. Input is a color in hex format",
     parameters={
@@ -439,12 +443,12 @@ fc_save_model_color = FunctionDeclaration(
 and add it to the return of the `get_function_declarations` method:
 
 ```python
-return [
+return types.Tool(function_declarations=[
     fc_generate_avatar,
     fc_save_model_color, # new return
     fc_show_my_model,
     fc_show_my_avatar
-]
+])
 ```
 
 And lastly we need to implement the actual method. Here you have another sample implementation
@@ -538,7 +542,7 @@ Using Vertex AI RAG Engine involves just 3 steps:
 
 As in the second module, we need to create a definition for our new method:
 ```python
-fc_rag_retrieval = FunctionDeclaration(
+fc_rag_retrieval = types.FunctionDeclaration(
     name="fc_rag_retrieval",
     description='''Function to be invoked when the prompt is 
         about a super secret game called Cloud Meow.''',
@@ -555,13 +559,13 @@ fc_rag_retrieval = FunctionDeclaration(
 
 ### rest of function declarations
 
-return [
+return types.Tool(function_declarations=[
     fc_rag_retrieval, # new return
     fc_generate_avatar,
     fc_save_model_color,
     fc_show_my_model,
     fc_show_my_avatar
-]
+])
 ```
 
 And the implementation of the actual method:
