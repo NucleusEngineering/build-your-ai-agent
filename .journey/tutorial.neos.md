@@ -20,6 +20,11 @@ Chrome, please make sure that 3rd party cookies are enabled in Chrome's address
 bar (the icon that looks like an eye), since the tutorial still requires these.
 The same is required for any other browser.</walkthrough-info-message>
 
+<walkthrough-info-message>
+If you close this tutorial window by mistake, you can always run the following
+command to re-open it: `cloudshell launch-tutorial .journey/tutorial.neos.md`
+</walkthrough-info-message>
+
 ## Overview
 
 ![Tutorial header image](https://raw.githubusercontent.com/NucleusEngineering/serverless/main/.images/containers.jpg)
@@ -161,11 +166,11 @@ do just that:
 ```bash
 cd terraform
 cp terraform.tfvars.template terraform.tfvars
-edit terraform.tfvars # change the project_id (your project id) as well as the region (us-central1)
+
 ```
-Now edit <walkthrough-editor-open-file filePath="cloudshell_open/build-your-ai-agent/terraform/terraform.tfvars">
-terraform.tfvars </walkthrough-editor-open-file> and change PROJECT_ID to <walkthrough-project-id/> and REGION to 
-us-central1. Then apply your new configuration:
+Now let's edit <walkthrough-editor-open-file filePath="cloudshell_open/build-your-ai-agent/terraform/terraform.tfvars">
+terraform.tfvars </walkthrough-editor-open-file> and change PROJECT_ID to `<walkthrough-project-id/>` and REGION to 
+`us-central1`. Then apply your new configuration:
 ```bash
 terraform init
 terraform plan
