@@ -88,7 +88,13 @@ Shell Terminal </walkthrough-editor-spotlight> to run the gcloud command.
 ## Project preparation
 
 Before we beging, there are some things we need to prepare, such as hydrate Firestore and upload 
-some dummy documents for RAG.
+some dummy documents for RAG. 
+
+Also, please make sure you are in the right folder by typing `pwd`. If you are in 
+`/home/your_username/cloudshell_open/build-your-ai-agent`, then you can continue,
+otherwise type `cd ~/cloudshell_open/build-your-ai-agent` since it's where all
+the code is.
+
 
 ```bash
 gcloud config set project <walkthrough-project-id/>
