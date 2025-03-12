@@ -191,7 +191,7 @@ We can use a single command to easily:
 - route traffic to the new endpoint
 
 ```bash
-cd .. # Going to the root folder of the project
+cd ..
 gcloud run deploy build-your-ai-agent --source .
 ```
 
@@ -366,7 +366,7 @@ With that out of the way, we need to implement the method now. You can use
 the following snippet as a reference and modify it to your liking:
 
 ```python
-def fc_generate_avatar(self, user_id, description):
+def fc_generate_avatar(self, description, user_id):
     try:
         model = ImageGenerationModel.from_pretrained(self.config_service.get_property("general", "imagen_version"))
 
@@ -451,7 +451,7 @@ And lastly we need to implement the actual method. Here you have another sample 
 that you are free to modify to your liking:
 
 ```python
-def fc_save_model_color(self, user_id, color):
+def fc_save_model_color(self, color, user_id):
     try:
         # Get the models collection reference
         models_ref = self.db.collection("models")
@@ -567,7 +567,7 @@ return [
 And the implementation of the actual method:
 
 ```python
-def fc_rag_retrieval(self, user_id, question_passthrough):
+def fc_rag_retrieval(self, question_passthrough, user_id):
     response = self.rag_model.generate_content(question_passthrough)
     return extract_text(response), ''
 ```

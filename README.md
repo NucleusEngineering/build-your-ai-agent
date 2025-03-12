@@ -16,11 +16,12 @@ Built with Python, it utilizes [Cloud Firestore](https://cloud.google.com/firest
 
 ### Workshop easy start
 
-
 Clicking this link will take you to Google Cloud Platform's console where you can start building.
 
 [![Begin the Tutorial](.journey/journey.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/NucleusEngineering/build-your-ai-agent.git&cloudshell_tutorial=.journey/tutorial.neos.md&show=ide&cloudshell_workspace=)
 
+If you close this tutorial window by mistake, you can always run the following command to re-open it: 
+`cloudshell launch-tutorial .journey/tutorial.neos.md`
 
 ### Prerequisites
 
