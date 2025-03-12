@@ -49,8 +49,7 @@ def extract_text(response):
     try:
         if hasattr(response.candidates[0].content.parts, '__iter__'):
             for part in response.candidates[0].content.parts:
-                if part._raw_part.text:
-                    return part._raw_part.text
+                return part.text
         else:
             return response.candidates[0].content.parts.text    
     except AttributeError as e:

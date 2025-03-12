@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from vertexai.preview import rag
+from vertexai import rag
+from vertexai.generative_models import Tool
 from . import config
 
 class RAG:
@@ -27,8 +28,8 @@ class RAG:
 
         for c in corpora:
             if c.display_name == corpus_name:
-                rag.delete_corpus(c.name) # Comment this to stop re-creating RAG corpora every time
-                # rag_corpus = rag.get_corpus(c.name) # Uncomment this once you are happy with your setup
+                # rag.delete_corpus(c.name) # Comment this to stop re-creating RAG corpora every time
+                rag_corpus = rag.get_corpus(c.name) # Uncomment this once you are happy with your setup
 
         if rag_corpus is None:
             rag_corpus = rag.create_corpus(display_name=corpus_name)
@@ -46,23 +47,27 @@ class RAG:
 
         self.name = rag_corpus.name
 
-
         rag_files = list(rag.list_files(corpus_name=rag_corpus.name))
         for f in rag_files:
             self.files.append(f.name.split('/')[-1])
 
 
-    def get_rag_retrieval(self) -> rag.Retrieval:
-        return rag.Retrieval(
-            source=rag.VertexRagStore(
-                rag_resources=[
-                    rag.RagResource(
-                        rag_corpus=self.name,  # Currently only 1 corpus is allowed.
-                        # Supply IDs from `rag.list_files()`.
-                        rag_file_ids=self.files,
+    def get_rag_retrieval(self) -> Tool:
+        return Tool.from_retrieval(
+            retrieval=rag.Retrieval(
+                source=rag.VertexRagStore(
+                    rag_resources=[
+                        rag.RagResource(
+                            rag_corpus=self.name,  # Currently only 1 corpus is allowed.
+                            # Supply IDs from `rag.list_files()`.
+                            rag_file_ids=self.files,
+                        )
+                    ],
+                    rag_retrieval_config=rag.RagRetrievalConfig(
+                        filter=rag.Filter(
+                            vector_distance_threshold=0.5
+                        )
                     )
-                ],
-                similarity_top_k=3,  # Optional
-                vector_distance_threshold=0.5,  # Optional
-            ),
+                ),
+            )
         )

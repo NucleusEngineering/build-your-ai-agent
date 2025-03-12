@@ -12,110 +12,107 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import traceback
 import vertexai
 import os
 import logging
+import traceback
 
-import vertexai.preview.generative_models as generative_models
-from vertexai.preview.generative_models import (
-    GenerationConfig,
-    GenerativeModel,
-    Part,
-    Tool,
-)
+from google import genai
+from google.genai import types, chats
+from vertexai.generative_models import GenerativeModel
 
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify #, render_template
 
 from common import config as configuration, function_calling, rag
 from services.user import User as UserService
 
 # Environment variables
 
-PROJECT_ID = os.environ.get("PROJECT_ID", "<GCP_PROJECT_ID>")
-REGION = os.environ.get("REGION", "<GCP_REGION>")
+PROJECT_ID = os.environ.get("PROJECT_ID", "dn-demos")
+REGION = os.environ.get("REGION", "us-central1")
 FAKE_USER_ID = "7608dc3f-d239-405c-a097-b152ab38a354"
 
-SAFETY_SETTINGS = {
-    generative_models.HarmCategory.HARM_CATEGORY_UNSPECIFIED: generative_models.HarmBlockThreshold.BLOCK_NONE,
-    generative_models.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: generative_models.HarmBlockThreshold.BLOCK_NONE,
-    generative_models.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: generative_models.HarmBlockThreshold.BLOCK_NONE,
-    generative_models.HarmCategory.HARM_CATEGORY_HARASSMENT: generative_models.HarmBlockThreshold.BLOCK_NONE,
-    generative_models.HarmCategory.HARM_CATEGORY_HATE_SPEECH: generative_models.HarmBlockThreshold.BLOCK_NONE,
-}
+DEFAULT_SAFETY_SETTINGS = [
+                types.SafetySetting(
+                    category='HARM_CATEGORY_UNSPECIFIED',
+                    threshold='BLOCK_ONLY_HIGH',
+                ),
+                types.SafetySetting(
+                    category='HARM_CATEGORY_DANGEROUS_CONTENT',
+                    threshold='BLOCK_ONLY_HIGH',
+                ),
+                types.SafetySetting(
+                    category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                    threshold='BLOCK_ONLY_HIGH',
+                ),
+                types.SafetySetting(
+                    category='HARM_CATEGORY_HARASSMENT',
+                    threshold='BLOCK_ONLY_HIGH',
+                ),
+                types.SafetySetting(
+                    category='HARM_CATEGORY_HATE_SPEECH',
+                    threshold='BLOCK_ONLY_HIGH',
+                )                
+            ]
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
 
 vertexai.init(project=PROJECT_ID, location=REGION)
 
+# Config file loader
 config = configuration.Config.get_instance()
 
-def init_model():
-    retail_tool = Tool(
-        function_declarations=UserService.get_function_declarations(),        
+# Our main chat config with system instructions
+chat_config = types.GenerateContentConfig(
+    system_instruction=config.get_property('chatbot', 'llm_system_instruction') + config.get_property('chatbot', 'llm_response_type'),
+    tools=[UserService.get_function_declarations()],
+    safety_settings=DEFAULT_SAFETY_SETTINGS,        
+    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+        disable=True
+    ),
+    tool_config=types.ToolConfig(
+        function_calling_config=types.FunctionCallingConfig(mode='AUTO'),
+    ),
+)
+
+# Separate RAG model due to incompatibility with python-genai: https://github.com/googleapis/python-genai/issues/457
+rag_model = GenerativeModel(
+    model_name=config.get_property('general', 'rag_gemini_version'), 
+    tools=[rag.RAG(config).get_rag_retrieval()]
+)
+
+firebase_admin.initialize_app(credentials.ApplicationDefault())
+db_client = firestore.client()
+user_service = UserService(db_client, config, rag_model)
+
+# Init our session handling variables
+client_sessions = {}
+
+def init_client() -> genai.Client:
+    client = genai.Client(
+        vertexai=True, project=PROJECT_ID, location=REGION
     )
-
-    model = GenerativeModel(
-        config.get_property('general', 'gemini_version'),
-        tools=[retail_tool],
-        generation_config=GenerationConfig(temperature=1),
-        system_instruction=[config.get_property('chatbot', 'llm_system_instruction') + config.get_property('chatbot', 'llm_response_type')]
-    )
-
-    return model
-
-def init_rag_model(): 
-    if(config.get_property('rag', 'use_rag') == "false"):
-        print("Not using RAG since it's disabled in config.ini")
-        return init_model() # Fallback to regular model
     
-    _rag = rag.RAG(config)    
-
-    rag_retrieval_tool = Tool.from_retrieval(
-        _rag.get_rag_retrieval()
-    )
-    # Create a gemini-pro model instance
-    model = GenerativeModel(
-        model_name=config.get_property('general', 'gemini_version'), 
-        tools=[rag_retrieval_tool]
-    )
-
-    return model
-
+    return client
 
 # Chat initialization per tenant (cleanup needed after timeout/logout)
-def init_chat(model, user_id):
+def init_client_chat(client: genai.Client, user_id) -> chats.Chat:
     if user_id in client_sessions and client_sessions[user_id] != None:
         logging.debug("Re-using existing session")
         return client_sessions[user_id]
 
     logging.debug("Creating new chat session for user %s", user_id)
 
-    if user_id not in history_clients:
-        history_clients[user_id] = []
+    gemini_client = client.chats.create(
+        model=config.get_property('general', 'llm_gemini_version'), config=chat_config, 
+    )
 
-    chat_client = model.start_chat(history=history_clients[user_id])
-
-    client_sessions[user_id] = chat_client
+    client_sessions[user_id] = gemini_client
     return client_sessions[user_id]
-
-# Init models 
-chat_model = init_model()
-rag_model = init_rag_model()
-
-cred = credentials.ApplicationDefault()  # Or use a service account key file
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
-user_service = UserService(db, config, rag_model)
-
-# Init our session handling variables
-client_sessions = {}
-history_clients = {}
 
 app = Flask(
     __name__,
@@ -123,44 +120,38 @@ app = Flask(
     template_folder="templates",
 )
 
+gemini_client = init_client()
+
 # Our main chat handler
 @app.route("/chat", methods=["POST"])
 def chat():
-    chat = init_chat(chat_model, FAKE_USER_ID)
+    # chat = init_chat(chat_model, FAKE_USER_ID)
+    chat = init_client_chat(gemini_client, FAKE_USER_ID)
 
-    prompt = Part.from_text(request.form.get("prompt"))
-    response = chat.send_message(
-        prompt,
-        safety_settings=SAFETY_SETTINGS,
-    )
+    prompt = types.Part.from_text(text=request.form.get("prompt"))
+    response = chat.send_message(message=prompt, config=chat_config)
 
-    logging.info(response)
-
-    history_clients[FAKE_USER_ID] = chat.history
-
-    function_params = function_calling.extract_params(response)
-    function_name = function_calling.extract_function(response)
-    text_response = function_calling.extract_text(response)
-
-    if function_name:
+    if response.function_calls is not None:
         try:
-            # Injection of user_id (this should be done dynamically when proper auth is implemented)
-            function_params['user_id'] = FAKE_USER_ID
+            function_call_part = response.function_calls[0]
+            function_call_name = function_call_part.name
+            function_call_args = function_call_part.args
+            function_call_content = response.candidates[0].content
 
-            logging.info(function_params)
-            logging.info("Calling  " + function_name)
+            logging.info("Calling " + function_call_name)
+            logging.info(function_call_args)
+            logging.info(function_call_content)
+            
+            function_call_args['user_id'] = FAKE_USER_ID
+            function_result, html_response = function_calling.call_function(user_service, function_call_name, function_call_args)
+            function_response = {'result': function_result}
 
-            function_response, html_response = function_calling.call_function(user_service, function_name, function_params)
-
-            response = chat.send_message(
-                    Part.from_function_response(
-                    name=function_name,
-                    response={
-                        "content": function_response,
-                    },
-                ),
-                safety_settings=SAFETY_SETTINGS     
+            function_response_part = types.Part.from_function_response(
+                name=function_call_part.name,
+                response=function_response,
             )
+
+            response = chat.send_message(message=function_response_part, config=chat_config)
 
             text_response = function_calling.extract_text(response) + html_response
 
@@ -171,6 +162,8 @@ def chat():
         except Exception as e:
             logging.error("%s, %s", traceback.format_exc(), e)
             text_response = config.get_property('chatbot', 'generic_error_message')
+    else:
+        text_response = function_calling.extract_text(response)
 
     if len(text_response) == 0:
         text_response = config.get_property('chatbot', 'generic_error_message')

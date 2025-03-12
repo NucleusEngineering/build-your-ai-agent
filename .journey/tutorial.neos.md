@@ -162,6 +162,11 @@ do just that:
 cd terraform
 cp terraform.tfvars.template terraform.tfvars
 edit terraform.tfvars # change the project_id (your project id) as well as the region (us-central1)
+```
+Now edit <walkthrough-editor-open-file filePath="cloudshell_open/build-your-ai-agent/terraform/terraform.tfvars">
+terraform.tfvars </walkthrough-editor-open-file> and change PROJECT_ID to <walkthrough-project-id/> and REGION to 
+us-central1. Then apply your new configuration:
+```bash
 terraform init
 terraform plan
 terraform apply
@@ -181,6 +186,7 @@ We can use a single command to easily:
 - route traffic to the new endpoint
 
 ```bash
+cd .. # Going to the root folder of the project
 gcloud run deploy build-your-ai-agent --source .
 ```
 
