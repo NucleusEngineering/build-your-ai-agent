@@ -25,12 +25,16 @@ from common.rag import RAG
 from models import model, user
 
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1.client import Client
+
 from google import genai
 from google.genai import types
 from vertexai.preview.vision_models import ImageGenerationModel
 
+from flask_socketio import SocketIO
+
 class User:
-    def __init__(self, db, config_service, gemini_client: genai.Client):
+    def __init__(self, db: Client, config_service, gemini_client: genai.Client, socketio: SocketIO):
         """
         Initializes the User service.
 
@@ -42,6 +46,7 @@ class User:
         self.db = db
         self.config_service = config_service
         self.gemini_client = gemini_client
+        self.socketio = socketio
 
 
     @staticmethod
@@ -288,7 +293,7 @@ class User:
 
     def fc_show_my_model(self, user_id):
         logging.info(f"Showing user's ({user_id}) character")
-        return '''Reply something like "there you go"''', '''<script>$("#modelWindow").show();</script>'''
+        return '''Reply something like "there you go"''', '''<script>window.reloadCurrentModel(); $("#modelWindow").show();</script>'''
 
     def fc_show_my_avatar(self, user_id):
         logging.info(f"Showing user's ({user_id}) avatar")
@@ -319,7 +324,7 @@ class User:
                 # for sake of brevity, we will just assume that it will work
                 # and return an appropriate message for the user.
 
-                threading.Thread(target=self.poll_job_status, args=(job_id)).start()
+                threading.Thread(target=self.poll_job_status, args=(job_id, user_id)).start()
 
                 return '''Reply that the conversion of their avatar to 3D model has started. The model will be updated later.''',f'''<script>console.log("Job id: {job_id}");</script>'''
             
@@ -359,14 +364,7 @@ class User:
                 logging.warning(f"No character found for '{user_id}'.")
                 return None
 
-            # In our current setup, there should only be one matching model
-            # model_doc = results[0]
-            # model_data = model_doc.to_dict()
-            
             return model.Model.from_dict(results[0].to_dict())
-
-            # we return the full object since it is now already a dict
-            # return model_data
 
         except Exception as e:
             logging.error("%s, %s", traceback.format_exc(), e)
@@ -391,7 +389,7 @@ class User:
                     filename = job_data.get("filename")
 
                     if filename:
-                        self.download_and_update_model(filename, user_id)
+                        self.download_and_update_model(filename, user_id, job_id)
                         break  # Exit the loop once the job is finished and the model is updated
                 elif job_status == "queued":
                   logging.info(f"Job {job_id} is queued, waiting 5 seconds to check again")
@@ -404,9 +402,50 @@ class User:
                 logging.error(f"Error checking job status for {job_id}: {e}")
                 break
 
-    def download_and_update_model(self, filename, user_id):
-        """Downloads the model file and saves it to the correct location."""
-        model_content = requests.get(filename).content
-        with open("static/models/default.glb", "wb") as model_file:
-            model_file.write(model_content)
-        logging.info(f"Updated 3d model for user {user_id} from {filename}")
+
+    def download_and_update_model(self, filename, user_id, job_id):
+        """Downloads the model file, saves it, updates Firestore, and notifies the user via WebSocket."""
+        try:
+            # Download the model
+            model_content_response = requests.get(filename)
+            model_content_response.raise_for_status() # Check for download errors
+            model_content = model_content_response.content
+
+            # Save the model file locally
+            model_path = f"static/models/{job_id}.glb"
+            with open(model_path, "wb") as model_file:
+                model_file.write(model_content)
+            logging.info(f"Saved new model file to {model_path} for user {user_id}")
+
+            # Update Firestore
+            models_ref = self.db.collection("models")
+            query = models_ref.where(filter=FieldFilter("user_id", "==", user_id))
+            results = query.limit(1).get() # Get only one document
+
+            if results:
+                user_model_ref = results[0].reference
+                user_model_ref.update({"model": job_id + ".glb", "original_material": False}) # Also reset material? Decide if needed.
+                logging.info(f"Updated Firestore model path for user {user_id} from job {job_id}")
+
+                # <<< START WebSocket Notification >>>
+                if self.socketio:
+                    message_payload = "Your new model has been generated"
+                    # Emit event 'model_update_complete' to a room named after the user_id
+                    # Assumes your WebSocket setup joins users to rooms named by their user_id upon connection.
+                    self.socketio.emit('model_update_complete', {'message': message_payload})
+                    logging.info(f"Sent WebSocket notification to user {user_id}")
+                else:
+                    logging.warning("SocketIO instance not available, skipping WebSocket notification.")
+                # <<< END WebSocket Notification >>>
+
+            else:
+                logging.error(f"Could not find model document in Firestore for user {user_id} to update.")
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error downloading model {filename} for job {job_id}: {e}")
+        except FileNotFoundError:
+            logging.error(f"Error saving model file locally for job {job_id}.")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during model download/update for user {user_id}, job {job_id}: {e}")
+            logging.error(traceback.format_exc())
+

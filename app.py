@@ -110,7 +110,13 @@ app = Flask(
 
 gemini_client = init_client()
 db_client = firestore.client()
-user_service = UserService(db_client, config, gemini_client)
+
+from flask_socketio import SocketIO
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'a_default_secret_key_change_me!')
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+
+user_service = UserService(db_client, config, gemini_client, socketio)
 
 # Init our session handling variables
 client_sessions = {}

@@ -16,6 +16,24 @@ limitations under the License.
 
 window.oncontextmenu = function() { return false; }
 
+
+const socket = io();
+
+// --- Example: Join the 'xpto' room when the connection is established ---
+socket.on('connect', () => {
+  console.log('Socket connected:', socket.id);
+});
+
+socket.on('model_update_complete', function(data) {
+    console.log('Received update via websocket:', data.message);
+    if (typeof insertBotWebsocketResponse === 'function') {
+        insertBotWebsocketResponse(data.message);
+    } else {
+        console.error('insertBotWebsocketResponse function not found!');
+        console.log(data.message);
+    }
+});
+
 function insertUserPrompt() {
     prompt = $('#prompt').val()
 
@@ -42,6 +60,19 @@ function insertBotPlaceholder() {
         <div class="chat-loading-indicator-container">
             <div class="msg"><img id="loading-indicator" class="htmx-indicator" src="/static/images/loading.svg"/></div>
         </div>
+    </div>`;
+
+    subject.insertAdjacentHTML('beforeend', injectHTML);
+
+    scrollToBottom();    
+}
+
+function insertBotWebsocketResponse(response) {
+    const subject = document.querySelector("#chat-history");
+    
+    injectHTML = `
+    <div class="chat-message chatbot">
+        <div class="msg">`+response+`</div>
     </div>`;
 
     subject.insertAdjacentHTML('beforeend', injectHTML);
