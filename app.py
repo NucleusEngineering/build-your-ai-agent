@@ -19,14 +19,13 @@ import traceback
 
 from google import genai
 from google.genai import types, chats
-from vertexai.generative_models import GenerativeModel
 
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 from flask import Flask, request, jsonify #, render_template
 
-from common import config as configuration, function_calling, rag
+from common import audiostream, config as configuration, function_calling
 from services.user import User as UserService
 
 # Environment variables
@@ -79,18 +78,7 @@ chat_config = types.GenerateContentConfig(
     ),
 )
 
-# Separate RAG model due to incompatibility with python-genai: https://github.com/googleapis/python-genai/issues/457
-rag_model = GenerativeModel(
-    model_name=config.get_property('general', 'rag_gemini_version'), 
-    tools=[rag.RAG(config).get_rag_retrieval()]
-)
-
 firebase_admin.initialize_app(credentials.ApplicationDefault())
-db_client = firestore.client()
-user_service = UserService(db_client, config, rag_model)
-
-# Init our session handling variables
-client_sessions = {}
 
 def init_client() -> genai.Client:
     client = genai.Client(
@@ -121,15 +109,37 @@ app = Flask(
 )
 
 gemini_client = init_client()
+db_client = firestore.client()
+user_service = UserService(db_client, config, gemini_client)
+
+# Init our session handling variables
+client_sessions = {}
 
 # Our main chat handler
 @app.route("/chat", methods=["POST"])
 def chat():
     # chat = init_chat(chat_model, FAKE_USER_ID)
     chat = init_client_chat(gemini_client, FAKE_USER_ID)
+    audio = audiostream.get_audio_stream(request)
 
-    prompt = types.Part.from_text(text=request.form.get("prompt"))
-    response = chat.send_message(message=prompt, config=chat_config)
+    # If we got audio stream input, let's convert it first to text via gemini flash
+    if audio != None: 
+        transcribed_audio_response = gemini_client.models.generate_content(
+            model=config.get_property('general', 'llm_gemini_version'),
+            contents=[
+                config.get_property('chatbot', 'audio_transcription_instruction'),
+                types.Part.from_bytes(data=audio, mime_type='audio/mpeg')
+            ]
+        )
+        
+        prompt = transcribed_audio_response.text
+        logging.debug(f"Transcribed audio: %s", prompt)
+        
+        # Now that we have the audio in text for, so we can send it further to our pipeline
+        response = chat.send_message(message=prompt, config=chat_config)
+    else:        
+        prompt = types.Part.from_text(text=request.form.get("prompt"))
+        response = chat.send_message(message=prompt, config=chat_config)
 
     if response.function_calls is not None:
         try:
@@ -144,15 +154,15 @@ def chat():
             
             function_call_args['user_id'] = FAKE_USER_ID
             function_result, html_response = function_calling.call_function(user_service, function_call_name, function_call_args)
-            function_response = {'result': function_result}
 
             function_response_part = types.Part.from_function_response(
                 name=function_call_part.name,
-                response=function_response,
+                response={
+                    'result': function_result
+                }
             )
 
             response = chat.send_message(message=function_response_part, config=chat_config)
-
             text_response = function_calling.extract_text(response) + html_response
 
         except TypeError as e:

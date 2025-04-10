@@ -14,6 +14,9 @@
 
 from vertexai import rag
 from vertexai.generative_models import Tool
+
+from google.genai import types
+
 from . import config
 
 class RAG:
@@ -52,7 +55,7 @@ class RAG:
             self.files.append(f.name.split('/')[-1])
 
 
-    def get_rag_retrieval(self) -> Tool:
+    def _get_rag_retrieval(self) -> Tool:
         return Tool.from_retrieval(
             retrieval=rag.Retrieval(
                 source=rag.VertexRagStore(
@@ -71,3 +74,20 @@ class RAG:
                 ),
             )
         )
+    
+    def get_rag_retrieval(self) -> types.Tool:
+        print(self.name)
+        return types.Tool(
+        retrieval=types.Retrieval(
+            vertex_rag_store=types.VertexRagStore(
+                rag_resources=[
+                    types.VertexRagStoreRagResource(
+                        rag_corpus=self.name
+                    )
+                ],
+            similarity_top_k=3,
+            vector_distance_threshold=0.5,
+            )
+        ),
+    )
+

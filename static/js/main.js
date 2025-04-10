@@ -70,3 +70,60 @@ function removeLoadingIndicator() {
     $('.chat-loading-indicator-container').remove();    
     $('.response-target').removeClass('response-target');
 }
+
+// Audio helpers
+
+let mediaRecorder;
+let audioChunks = [];
+
+async function startRecording(self, event) {
+    if ("buttons" in event) {
+        if (event.buttons == 2)
+            return;
+    }    
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.start();
+    mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+
+    insertUserPrompt("&#127911;");
+}
+
+function stopRecording(self, event) {
+    mediaRecorder.stop();
+
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioChunks = []; // Reset for the next recording
+
+        const formData = new FormData();
+        formData.append('audio', blob, 'recording.webm');
+
+        disableFormFields();
+        disableRecordButton();
+        insertBotPlaceholder();
+        showLoadingIndicator();
+
+        fetch('/chat', { method: 'POST', body: formData })
+            .then(response => response.text()).then((dataStr) => { postRecodingCallback(dataStr); scrollToBottom(); removeLoadingIndicator(); })
+            .catch(error => console.error('Error sending audio message:', error));
+    };
+}
+
+function postRecodingCallback(response) {
+    const divFragment = document.createRange().createContextualFragment(response);
+    const subject = document.querySelector(".response-target");
+    subject.append(divFragment);
+
+    enableFormFields(false);
+    enableRecordButton();
+}
+
+function enableRecordButton() {
+    $("#talk-button").attr('disabled', false);
+}
+
+function disableRecordButton() {
+    $("#talk-button").attr('disabled', true);    
+}

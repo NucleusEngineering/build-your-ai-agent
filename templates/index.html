@@ -70,6 +70,7 @@ limitations under the License. -->
         <input type="text" name="prompt" id="prompt" placeholder="Type your message here..." autocomplete="off" required>
         <button id="chat-button" class="btn chat-button" hx-on:click="insertUserPrompt(); insertBotPlaceholder();">Send</button>        
       </form>
+      <button id="talk-button" class="btn talk-button" hx-on:touchstart="startRecording(this, event)" hx-on:mousedown="startRecording(this, event)" hx-on:mouseup="stopRecording(this, event)" hx-on:touchend="stopRecording(this, event)"></button> 
     </div>
   </div>
 </body>
