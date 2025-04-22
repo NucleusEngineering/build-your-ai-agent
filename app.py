@@ -15,10 +15,14 @@
 import vertexai
 import os
 import logging
+import random
 import traceback
+from bs4 import BeautifulSoup
 
 from google import genai
 from google.genai import types, chats
+from google.cloud import texttospeech_v1beta1 as texttospeech
+from google.api_core.client_options import ClientOptions
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -184,6 +188,64 @@ def chat():
     if len(text_response) == 0:
         text_response = config.get_property('chatbot', 'generic_error_message')
         
+
+    if audio != None:
+        # call google text to voice api and synthesize text_response in english
+        audio_file_path = os.path.join('static/audio_output', f'output_{FAKE_USER_ID}{str(random.randint(0, 10000)) }.wav')
+
+        TTS_LOCATION = "global"
+
+        # Instantiates a client
+        API_ENDPOINT = (
+            f"{TTS_LOCATION}-texttospeech.googleapis.com"
+            if TTS_LOCATION != "global"
+            else "texttospeech.googleapis.com"
+        )
+
+        client = texttospeech.TextToSpeechClient(
+            client_options=ClientOptions(api_endpoint=API_ENDPOINT)
+        )
+            
+        soup = BeautifulSoup(text_response, 'html.parser')
+        text_response_without_html = soup.get_text()
+
+        # Set the text input to be synthesized (if it doesn't contain html)
+        if "</table>" in text_response:
+            synthesis_input = texttospeech.SynthesisInput(text=config.get_property('chatbot', 'default_audio_response'))
+        else:
+            synthesis_input = texttospeech.SynthesisInput(text=text_response_without_html)
+
+        # Build the voice request, select the language code ("en-US") and the SSML
+        # voice gender ("MALE")
+        voice = "Aoede"  # @param ["Aoede", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Zephyr"]
+        language_code = "en-US"  # @param [ "de-DE", "en-AU", "en-GB", "en-IN", "en-US", "fr-FR", "hi-IN", "pt-BR", "ar-XA", "es-ES", "fr-CA", "id-ID", "it-IT", "ja-JP", "tr-TR", "vi-VN", "bn-IN", "gu-IN", "kn-IN", "ml-IN", "mr-IN", "ta-IN", "te-IN", "nl-NL", "ko-KR", "cmn-CN", "pl-PL", "ru-RU", "th-TH"]
+        voice_name = f"{language_code}-Chirp3-HD-{voice}"
+
+        voice = texttospeech.VoiceSelectionParams(
+            name=voice_name, language_code=language_code, ssml_gender=texttospeech.SsmlVoiceGender.MALE
+        )
+
+        # Select the type of audio file you want returned
+        audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.LINEAR16)
+
+        # Perform the text-to-speech request
+        response = client.synthesize_speech(
+            input=synthesis_input, voice=voice, audio_config=audio_config
+        )
+
+        # The response's audio_content is binary.
+        with open(audio_file_path, "wb") as out:
+            out.write(response.audio_content)
+
+        # Return the HTML audio element pointing to the synthesized audio file
+        text_response += f"""
+        <br><br>
+        <audio controls autoplay>
+            <source src="/{audio_file_path}" type="audio/wav">
+            Your browser does not support the audio element.
+        </audio>
+        """
+
     return function_calling.gemini_response_to_template_html(text_response)
 
 @app.route("/", methods=["GET"])

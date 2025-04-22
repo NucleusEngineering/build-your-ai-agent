@@ -25,12 +25,16 @@ from common.rag import RAG
 from models import model, user
 
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1.client import Client
+
 from google import genai
 from google.genai import types
 from vertexai.preview.vision_models import ImageGenerationModel
 
+from flask_socketio import SocketIO
+
 class User:
-    def __init__(self, db, config_service, gemini_client: genai.Client):
+    def __init__(self, db: Client, config_service, gemini_client: genai.Client, socketio: SocketIO):
         """
         Initializes the User service.
 
@@ -42,6 +46,7 @@ class User:
         self.db = db
         self.config_service = config_service
         self.gemini_client = gemini_client
+        self.socketio = socketio
 
 
     @staticmethod
